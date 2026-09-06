@@ -117,7 +117,7 @@ mesh2gis convert <girdi> <çıktı> [seçenekler]
 | `--offset X Y Z` | `0 0 0` | Dünya koordinatına öteleme. Ölçeklemeden **sonra** uygulanır. |
 | `--scale N` | `1.0` | Birim dönüşümü (mm → m için `0.001`). |
 | `--epsg N` | yok | Çıktının koordinat sistemi. Verilmezse `.prj` yazılmaz. |
-| `--storey-height M` | yok | Kat yüksekliği; `STOREYS` alanı bundan türetilir. |
+| `--storey-height M` | yok | Kat yüksekliği; `STOREYS` ve `FLOOR_AREA` bundan türetilir. `auto` yazarsan veriden çıkarır. |
 | `--merge-stacks` | kapalı | Üst üste binen blokları bina bazında birleştirir. |
 | `-q`, `--quiet` | kapalı | İlerleme çıktısını sustur. |
 
@@ -262,6 +262,19 @@ yüzeyi… her biri kendi tablosunu alır.
 |---|---|---|
 | `STOREYS` | `storeys` | `HEIGHT / --storey-height`, yuvarlanmış |
 | `FLOOR_AREA` | `floor_area` | Toplam inşaat alanı: her parçanın kendi tabanı × kendi kat sayısı |
+
+`auto` yazarsan program kat gridini blok yüksekliklerinden kendi bulur ve
+hangi değeri seçtiğini, kaç yüzde tuttuğunu yazar:
+
+```
+storey height inferred as 3.2 (95% of heights fit); this is a guess --
+pass an explicit value to override
+```
+
+⚠️ `auto` bir ölçüm değil, öneri. Çözemediği bir belirsizlik var: 3,2'nin her
+katı aynı zamanda 1,6'nın da katıdır. Program makul olan en büyük böleni seçer,
+bu sıradan binalarda doğru ama çift yükseklikli zemin katı olan bir modelde
+yanlıştır. Hiçbir grid çoğunluğu açıklamıyorsa uydurmak yerine hata verir.
 
 Vermezsen bu iki sütun **hiç yazılmaz**. Sıfırla doldurmak yerine yok olmaları
 kasıtlı: köprünün, makine parçasının, arazi yüzeyinin kat sayısı yoktur.

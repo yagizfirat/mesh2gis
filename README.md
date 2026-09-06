@@ -32,7 +32,8 @@ storey count, no attribute table.
   volume and a `CLOSED` flag are written for every mesh, because they mean
   something for any solid. Storey count and floor area appear only when you
   supply a storey height — a bridge, a machine part or a terrain surface has no
-  storeys, and a column of zeros is worse than no column. `--keep-tags` carries
+  storeys, and a column of zeros is worse than no column. Pass
+  `--storey-height auto` and the grid is inferred from the data. `--keep-tags` carries
   the reader's own labels through.
 - **Measurements you can trust.** Merged features are measured part by part, so
   a setback storey counts at its own size rather than the ground footprint's.

@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.2.0] - 2026-09-06
 
 ### Added
+- `--storey-height auto` / `storey_height="auto"`: infer the floor-to-floor grid
+  from the block heights instead of requiring the caller to know it. The chosen
+  value and the fraction of heights it explains are reported; when nothing
+  explains a clear majority the conversion fails rather than guessing.
+- `detect_storey_height()` and `resolve_storey_height()`, public so the
+  detection can be used without the CLI.
 - **The output schema now adapts to the data.** `STOREYS` and `FLOOR_AREA` are
   written only when a storey height is supplied; a mesh that is not a building
   gets neither, instead of a column of zeros. Geometric columns are always

@@ -25,9 +25,9 @@ Or step by step, when you need to inspect the mesh first::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from mesh2gis.attrs import BlockAttrs, compute
+from mesh2gis.attrs import BlockAttrs, compute, detect_storey_height
 from mesh2gis.crs import UnknownCRSError, wkt_for
 from mesh2gis.geometry import UpAxis, detect_up_axis, transform
 from mesh2gis.grouping import GroupBy, group, merge_stacked
@@ -51,12 +51,14 @@ __all__ = [
     "__version__",
     "compute",
     "convert",
+    "detect_storey_height",
     "detect_up_axis",
     "group",
     "merge_stacked",
     "read",
     "read_dxf",
     "read_obj",
+    "resolve_storey_height",
     "transform",
     "wkt_for",
     "write_gpkg",
@@ -69,6 +71,32 @@ _READERS: dict[str, Callable[[str | PathLike[str]], Mesh]] = {
     ".dxf": read_dxf,
 }
 _WRITER_SUFFIXES = frozenset({".shp", ".gpkg", ".obj"})
+
+
+def resolve_storey_height(blocks: list[Block]) -> tuple[float, float]:
+    """Infer a storey height from a set of blocks.
+
+    Args:
+        blocks: Blocks to measure.
+
+    Returns:
+        ``(storey_height, coverage)`` -- the inferred grid and the fraction of
+        block heights it explains.
+
+    Raises:
+        ValueError: If no grid explains a clear majority of the heights. The
+            caller asked for automatic detection, so silently omitting the
+            storey columns would be more confusing than refusing.
+    """
+    heights = [b.bounds()[5] - b.bounds()[2] for b in blocks]
+    found = detect_storey_height(heights)
+    if found is None:
+        msg = (
+            "could not infer a storey height from the block heights; "
+            "pass an explicit value instead of 'auto'"
+        )
+        raise ValueError(msg)
+    return found
 
 
 def read(path: str | PathLike[str]) -> Mesh:
@@ -102,7 +130,7 @@ def convert(
     group_by: GroupBy = "usemtl",
     merge_stacks: bool = False,
     epsg: int | None = None,
-    storey_height: float | None = None,
+    storey_height: float | Literal["auto"] | None = None,
     keep_tags: bool = False,
 ) -> int:
     """Read, transform, group and write in one call.
@@ -123,6 +151,8 @@ def convert(
         storey_height: Floor-to-floor height used to derive storey counts.
             Supplying it adds the storey and floor-area columns to the output;
             without it those columns are omitted rather than filled with zeros.
+            Pass ``"auto"`` to infer it from the block heights via
+            :func:`~mesh2gis.attrs.detect_storey_height`.
         keep_tags: Carry the reader's own labels (material, group, object, DXF
             layer) through as extra columns.
 
@@ -130,7 +160,8 @@ def convert(
         Number of features written.
 
     Raises:
-        ValueError: If the source or target extension is unsupported.
+        ValueError: If the source or target extension is unsupported, or if
+            ``storey_height="auto"`` and no grid explains the heights.
     """
     suffix = Path(target).suffix.lower()
     if suffix not in _WRITER_SUFFIXES:
@@ -145,6 +176,9 @@ def convert(
     blocks = group(mesh, by=group_by)
     if merge_stacks:
         blocks = merge_stacked(blocks)
+
+    if storey_height == "auto":
+        storey_height = resolve_storey_height(blocks)[0]
 
     if suffix == ".obj":
         return write_obj(blocks, target)

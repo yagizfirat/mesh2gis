@@ -24,9 +24,16 @@ import numpy as np
 from mesh2gis.types import clean_label
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from mesh2gis.types import Block
 
-__all__ = ["BlockAttrs", "compute"]
+__all__ = ["BlockAttrs", "compute", "detect_storey_height"]
+
+_MIN_MEANINGFUL_HEIGHT = 0.5
+_MIN_HEIGHTS_FOR_DETECTION = 3
+_MIN_STOREY_HEIGHT = 1.5
+_MIN_COVERAGE = 0.6
 
 _FLAT_TOL = 1e-6
 _MANIFOLD = 2
@@ -275,3 +282,49 @@ def _signed_volume(coords: np.ndarray) -> float:
         b, c = coords[i], coords[i + 1]
         total += float(np.dot(a, np.cross(b, c))) / 6.0
     return total
+
+
+def detect_storey_height(
+    heights: Iterable[float], *, tol: float = 0.02
+) -> tuple[float, float] | None:
+    """Infer the floor-to-floor grid a set of block heights was built on.
+
+    Mass models are drawn on a fixed storey height, so block heights cluster on
+    multiples of it. The best candidate is the one explaining the most heights;
+    it is reported with the fraction it covers so the caller can judge it.
+
+    A perfect fit is not required and should not be: real models contain
+    ground-floor slabs, mezzanines and odd volumes that fit no grid, so
+    demanding every height match would mean never detecting anything.
+
+    Note the ambiguity this cannot resolve: every multiple of 3.2 is also a
+    multiple of 1.6. The largest plausible divisor wins, which is right for
+    ordinary buildings and wrong for a model with a double-height ground floor.
+    Treat the result as a proposal, not a measurement.
+
+    Args:
+        heights: Observed block heights, in model units.
+        tol: How far from a whole multiple a height may sit, as a fraction.
+
+    Returns:
+        ``(storey_height, coverage)``, or ``None`` when nothing explains a
+        clear majority.
+    """
+    candidates = [h for h in heights if h > _MIN_MEANINGFUL_HEIGHT]
+    if len(candidates) < _MIN_HEIGHTS_FOR_DETECTION:
+        return None
+
+    best: tuple[float, float] | None = None
+    for h in sorted(set(candidates)):
+        for divisor in (1, 2, 3):
+            step = h / divisor
+            if step < _MIN_STOREY_HEIGHT:
+                continue
+            fit = sum(abs(c / step - round(c / step)) < tol for c in candidates)
+            coverage = fit / len(candidates)
+            if best is None or coverage > best[1]:
+                best = (round(step, 3), coverage)
+
+    if best is None or best[1] < _MIN_COVERAGE:
+        return None
+    return best

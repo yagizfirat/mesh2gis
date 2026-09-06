@@ -291,27 +291,22 @@ def test_cli_reports_errors_as_exit_code(tmp_path, capsys):
 
 
 def test_storey_hint_finds_a_clean_grid():
-    from mesh2gis.cli import _storey_hint
-
-    hint = _storey_hint([3.2, 6.4, 9.6, 12.8, 16.0])
+    hint = mesh2gis.detect_storey_height([3.2, 6.4, 9.6, 12.8, 16.0])
     assert hint is not None
     assert hint[0] == pytest.approx(3.2)
     assert hint[1] == pytest.approx(1.0)
 
 
 def test_storey_hint_tolerates_outliers():
-    from mesh2gis.cli import _storey_hint
-
-    hint = _storey_hint([3.2, 6.4, 9.6, 12.8, 16.0, 10.6, 13.8])
+    hint = mesh2gis.detect_storey_height([3.2, 6.4, 9.6, 12.8, 16.0, 10.6, 13.8])
     assert hint is not None
     assert hint[0] == pytest.approx(3.2)
     assert 0.6 <= hint[1] < 1.0
 
 
 def test_storey_hint_gives_up_on_noise():
-    from mesh2gis.cli import _storey_hint
-
-    assert _storey_hint([2.7, 5.1, 8.9, 11.3, 17.6, 23.1, 4.4, 19.8]) is None
+    noise = [2.7, 5.1, 8.9, 11.3, 17.6, 23.1, 4.4, 19.8]
+    assert mesh2gis.detect_storey_height(noise) is None
 
 
 def test_inspect_measures_height_along_detected_up_axis(cube_obj, capsys):
@@ -617,3 +612,73 @@ def test_tag_value_is_the_most_common_when_a_block_spans_several(cube_obj):
     a = mesh2gis.compute(whole, 1)
     assert a.tags["usemtl"] == "Default"
     assert a.tags["g"] is None
+
+
+# ------------------------------------------- automatic storey height
+
+
+def test_auto_infers_the_grid_from_the_data(tmp_path):
+    """Heights on a 3.2 m grid: the caller should not have to say "3.2"."""
+    verts: list[tuple[float, float, float]] = []
+    faces: list[list[int]] = []
+    for n, storeys in enumerate((1, 3, 4, 5, 2)):
+        x0 = n * 20.0
+        top = storeys * 3.2
+        base = len(verts)
+        for y in (0.0, top):
+            verts += [
+                (x0, y, 0.0),
+                (x0 + 10, y, 0.0),
+                (x0 + 10, y, -10.0),
+                (x0, y, -10.0),
+            ]
+        for quad in (
+            [0, 3, 2, 1],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [1, 2, 6, 5],
+            [2, 3, 7, 6],
+            [3, 0, 4, 7],
+        ):
+            faces.append([base + i for i in quad])
+
+    lines = [f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in verts]
+    for n in range(5):
+        lines.append("usemtl M")
+        lines += ["f " + " ".join(str(i + 1) for i in f) for f in faces[n * 6 : (n + 1) * 6]]
+    src = tmp_path / "grid.obj"
+    src.write_text("\n".join(lines))
+
+    blocks = mesh2gis.group(mesh2gis.transform(mesh2gis.read_obj(src), up="y"), by="usemtl")
+    step, coverage = mesh2gis.resolve_storey_height(blocks)
+    assert step == pytest.approx(3.2)
+    assert coverage == pytest.approx(1.0)
+
+    dst = tmp_path / "auto.shp"
+    mesh2gis.convert(src, dst, up="y", storey_height="auto", epsg=5254)
+    with shp.Reader(str(dst)) as r:
+        assert "STOREYS" in [f[0] for f in r.fields[1:]]
+        assert sorted(rec["STOREYS"] for rec in r.records()) == [1, 2, 3, 4, 5]
+
+
+def test_auto_refuses_rather_than_guessing_on_noise(cube_obj, tmp_path):
+    """Two blocks of unrelated heights explain no grid; say so, don't invent one."""
+    with pytest.raises(ValueError, match="could not infer a storey height"):
+        mesh2gis.convert(cube_obj, tmp_path / "x.shp", up="y", storey_height="auto")
+
+
+def test_cli_accepts_auto(tmp_path, cube_obj, capsys):
+    from mesh2gis.cli import main
+
+    code = main(
+        ["convert", str(cube_obj), str(tmp_path / "a.shp"), "--up", "y", "--storey-height", "auto"]
+    )
+    assert code == 1, "cube heights explain no grid"
+    assert "could not infer" in capsys.readouterr().err
+
+
+def test_cli_rejects_a_bad_storey_height(cube_obj, tmp_path):
+    from mesh2gis.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["convert", str(cube_obj), str(tmp_path / "a.shp"), "--storey-height", "-2"])

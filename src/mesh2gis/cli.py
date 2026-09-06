@@ -15,11 +15,6 @@ if TYPE_CHECKING:
 
 __all__ = ["main"]
 
-_MIN_MEANINGFUL_HEIGHT = 0.5
-_MIN_HEIGHTS_FOR_HINT = 3
-_MIN_STOREY_HEIGHT = 1.5
-_MIN_HINT_COVERAGE = 0.6
-
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -78,10 +73,13 @@ def _build_parser() -> argparse.ArgumentParser:
     conv.add_argument("--epsg", type=int, default=None, help="CRS of the output")
     conv.add_argument(
         "--storey-height",
-        type=float,
+        type=_storey_height,
         default=None,
         metavar="M",
-        help="floor-to-floor height, used to derive storey counts",
+        help=(
+            "floor-to-floor height, used to derive storey counts; "
+            "pass 'auto' to infer it from the block heights"
+        ),
     )
     conv.add_argument(
         "--keep-tags",
@@ -95,6 +93,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     conv.add_argument("-q", "--quiet", action="store_true", help="suppress progress output")
     return parser
+
+
+def _storey_height(value: str) -> float | str:
+    """Parse --storey-height: a positive number, or the word 'auto'."""
+    if value.strip().lower() == "auto":
+        return "auto"
+    try:
+        number = float(value)
+    except ValueError:
+        msg = f"expected a number or 'auto', got {value!r}"
+        raise argparse.ArgumentTypeError(msg) from None
+    if number <= 0:
+        msg = f"storey height must be positive, got {number}"
+        raise argparse.ArgumentTypeError(msg)
+    return number
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -125,7 +138,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         heights = Counter(round(b.bounds()[5] - b.bounds()[2], 2) for b in blocks)
         top = ", ".join(f"{h}: {n:,}" for h, n in heights.most_common(8))
         print(f"  heights  {top}   (up={up})")
-        hint = _storey_hint([b.bounds()[5] - b.bounds()[2] for b in blocks])
+        hint = mesh2gis.detect_storey_height([b.bounds()[5] - b.bounds()[2] for b in blocks])
         if hint:
             step, coverage = hint
             print(
@@ -133,42 +146,6 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 f"-- try --storey-height {step}"
             )
     return 0
-
-
-def _storey_hint(heights: list[float], tol: float = 0.02) -> tuple[float, float] | None:
-    """Guess the floor-to-floor grid the model was built on.
-
-    Mass models are usually drawn on a fixed storey height, so block heights
-    cluster on multiples of it. Returns the best candidate step and the fraction
-    of heights it explains, or ``None`` if nothing explains a clear majority --
-    real models contain ground-floor slabs and odd volumes that fit no grid, so
-    demanding a perfect fit would mean never reporting anything.
-
-    Args:
-        heights: Observed block heights.
-        tol: How far from a whole multiple a height may sit, as a fraction.
-
-    Returns:
-        ``(step, coverage)`` or ``None``.
-    """
-    candidates = [h for h in heights if h > _MIN_MEANINGFUL_HEIGHT]
-    if len(candidates) < _MIN_HEIGHTS_FOR_HINT:
-        return None
-
-    best: tuple[float, float] | None = None
-    for h in sorted(set(candidates)):
-        for divisor in (1, 2, 3):
-            step = h / divisor
-            if step < _MIN_STOREY_HEIGHT:
-                continue
-            fit = sum(abs(c / step - round(c / step)) < tol for c in candidates)
-            coverage = fit / len(candidates)
-            if best is None or coverage > best[1]:
-                best = (round(step, 3), coverage)
-
-    if best is None or best[1] < _MIN_HINT_COVERAGE:
-        return None
-    return best
 
 
 def _cmd_convert(args: argparse.Namespace) -> int:
@@ -191,6 +168,15 @@ def _cmd_convert(args: argparse.Namespace) -> int:
         blocks = mesh2gis.merge_stacked(blocks)
         log(f"  {len(blocks):,} features after merging stacks")
 
+    storey_height = args.storey_height
+    if storey_height == "auto":
+        storey_height, coverage = mesh2gis.resolve_storey_height(blocks)
+        log(
+            f"  storey height inferred as {storey_height} "
+            f"({coverage:.0%} of heights fit); this is a guess -- "
+            f"pass an explicit value to override"
+        )
+
     suffix = str(args.target).lower()
     if suffix.endswith(".obj"):
         n = mesh2gis.write_obj(blocks, args.target)
@@ -199,7 +185,7 @@ def _cmd_convert(args: argparse.Namespace) -> int:
             blocks,
             args.target,
             epsg=args.epsg,
-            storey_height=args.storey_height,
+            storey_height=storey_height,
             keep_tags=args.keep_tags,
         )
     elif suffix.endswith(".shp"):
@@ -207,7 +193,7 @@ def _cmd_convert(args: argparse.Namespace) -> int:
             blocks,
             args.target,
             epsg=args.epsg,
-            storey_height=args.storey_height,
+            storey_height=storey_height,
             keep_tags=args.keep_tags,
         )
     else:
@@ -216,7 +202,7 @@ def _cmd_convert(args: argparse.Namespace) -> int:
 
     if args.epsg is None and not suffix.endswith(".obj"):
         log("  warning: no --epsg given; output has an undefined CRS")
-    if args.storey_height is None and not suffix.endswith(".obj"):
+    if storey_height is None and not suffix.endswith(".obj"):
         log("  no --storey-height; storey and floor-area columns omitted")
     log(f"wrote {n:,} features to {args.target}")
     return 0
