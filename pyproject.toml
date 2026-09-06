@@ -49,8 +49,8 @@ Changelog = "https://github.com/yagizfirat/mesh2gis/blob/main/CHANGELOG.md"
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.6",
-    "mypy>=1.11",
+    "ruff==0.16.6",
+    "mypy==1.18.2",
     "ezdxf>=1.1",
 ]
 
@@ -93,7 +93,6 @@ ignore = [
 convention = "google"
 
 [tool.mypy]
-python_version = "3.10"
 strict = true
 files = ["src/mesh2gis"]
 warn_unreachable = true

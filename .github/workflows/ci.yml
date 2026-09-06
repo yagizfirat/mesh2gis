@@ -21,6 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
       - run: uv sync --all-extras
       - name: ruff check
         run: uv run ruff check --output-format=github .
@@ -41,6 +42,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
           python-version: ${{ matrix.python-version }}
       - run: uv sync --all-extras
       - name: pytest
