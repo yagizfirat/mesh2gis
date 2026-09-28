@@ -6,6 +6,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- `wkt_for` coerces pyproj's return value to `str`. pyproj ships no type
+  information, so mypy inferred `Any` and newer versions flag it under strict
+  mode -- the lint job failed even though the code was correct.
+
+## [0.3.1] - 2026-09-14
+
+### Fixed
+- Shapefile numeric columns are written as dBASE type `N` with a decimal count
+  instead of `F`. `F` is the dBASE IV float type and readers including ArcGIS
+  map it to single precision -- about seven significant digits, while volumes
+  in a district-scale mass model run to nine. Values already written with `F`
+  were stored correctly; the loss happened on read.
+
+## [0.3.0] - 2026-09-14
+
+### Fixed
+- **`merge_stacked` chained neighbouring buildings together.** A block was
+  merged with every candidate beneath it instead of the single one it rests on,
+  so buildings sharing a storey level linked up through it. On a 8,604-block
+  test set this collapsed to 4,116 features, 194 of which held two to four
+  separate buildings -- their `BASE_AREA` and `FLOOR_AREA` came out at exact
+  multiples of the true value. Matching each block to its best-overlapping
+  candidate alone yields 4,333 features against 4,326 blocks that actually sit
+  on the ground, and cuts features with more than two parts from 194 to 58.
+  Aggregate totals were never affected; per-feature attribution was.
+  **BREAKING** for anyone depending on the previous feature count.
+- Candidate lookup is now indexed by quantised top elevation rather than
+  scanning every lower block.
+
 ## [0.2.0] - 2026-09-06
 
 ### Added

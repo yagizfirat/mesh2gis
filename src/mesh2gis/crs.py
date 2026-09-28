@@ -67,7 +67,7 @@ def wkt_for(epsg: int) -> str:
         )
         raise UnknownCRSError(msg) from exc
     try:
-        return CRS.from_epsg(epsg).to_wkt("WKT1_ESRI")
+        return str(CRS.from_epsg(epsg).to_wkt("WKT1_ESRI"))
     except Exception as exc:  # pragma: no cover - pyproj raises many types
         msg = f"could not resolve EPSG:{epsg}"
         raise UnknownCRSError(msg) from exc

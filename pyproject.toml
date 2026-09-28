@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mesh2gis"
-version = "0.2.0"
+version = "0.3.1"
 description = "Turn CAD mass models (OBJ, DXF) into GIS-ready 3D features — multipatch shapefiles and GeoPackages, without ArcGIS or GDAL."
 readme = "README.md"
 license = "MIT"

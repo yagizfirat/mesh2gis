@@ -156,10 +156,20 @@ birleştirir.
 İki koşul da gerekli: sadece kot bakılırsa düz arazideki komşular birleşir,
 sadece taban bakılırsa sıra evler birleşir.
 
-⚠️ **Sezgisel bir yöntemdir.** Hem duvarı paylaşan hem kat yüksekliği aynı olan
-komşu binaları yanlışlıkla birleştirebilir. Bina bazında kat sayısına
-güvenmeden önce sonucu gözle doğrula. Python API'sinde `tolerance` ve
-`overlap_ratio` ile hassasiyeti ayarlayabilirsin.
+Her blok **tek bir çatının** üzerinde durur, bu yüzden altındaki en çok örtüşen
+tek adayla eşleşir. Bütün uygun adaylarla birleştirmek komşu binaları aynı kat
+kotu üzerinden birbirine zincirler.
+
+⚠️ **Yine de sezgiseldir** — gerçek taban geometrisi değil sınırlayıcı kutu
+kullanıyor. Duvarı paylaşan binalar hâlâ yanlış birleşebilir. Çıktıdaki
+`N_PARTS` alanına bak: **3'ten büyük değerler şüphelidir**, o feature birden
+fazla bina içeriyor olabilir. Şöyle bulursun:
+
+```
+"N_PARTS" > 3
+```
+
+Python API'sinde `tolerance` ve `overlap_ratio` ile hassasiyeti ayarlayabilirsin.
 
 Örnek: 8.604 blok → `--merge-stacks` → 4.116 bina.
 Birleştirilmiş feature'lar **parça parça ölçülür**, birleşim üzerinden değil.

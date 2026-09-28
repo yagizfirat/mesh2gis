@@ -682,3 +682,108 @@ def test_cli_rejects_a_bad_storey_height(cube_obj, tmp_path):
 
     with pytest.raises(SystemExit):
         main(["convert", str(cube_obj), str(tmp_path / "a.shp"), "--storey-height", "-2"])
+
+
+def test_merge_stacked_picks_one_roof_not_every_candidate():
+    """Two neighbours with a shared storey level must not chain together.
+
+    Each has a base and a setback at the same elevation. Merging with every
+    qualifying candidate links all four into one feature; a block rests on
+    exactly one roof, so only the best-overlapping match may win.
+    """
+    verts: list[list[float]] = []
+    faces: list[np.ndarray] = []
+
+    def box(bounds):
+        x0, x1, y0, y1, z0, z1 = bounds
+        start = len(verts)
+        for z in (z0, z1):
+            verts.extend([[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]])
+        first = len(faces)
+        for quad in (
+            [0, 3, 2, 1],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [1, 2, 6, 5],
+            [2, 3, 7, 6],
+            [3, 0, 4, 7],
+        ):
+            faces.append(np.array([start + i for i in quad]))
+        return np.arange(first, first + 6)
+
+    # Two buildings side by side, touching at x=10, both 10 m tall with a
+    # setback storey on top.
+    a_base = box((0, 10, 0, 10, 0, 10))
+    a_top = box((1, 9, 1, 9, 10, 13))
+    b_base = box((10, 20, 0, 10, 0, 10))
+    b_top = box((11, 19, 1, 9, 10, 13))
+
+    mesh = Mesh(vertices=np.array(verts), faces=faces)
+    blocks = [
+        Block(mesh, a_base, label="a"),
+        Block(mesh, a_top, label="a_top"),
+        Block(mesh, b_base, label="b"),
+        Block(mesh, b_top, label="b_top"),
+    ]
+
+    merged = merge_stacked(blocks)
+    assert len(merged) == 2, "two buildings, not one chained feature"
+    assert all(len(m.parts) == 2 for m in merged)
+
+
+def test_merge_stacked_is_insensitive_to_the_overlap_threshold():
+    """Once only the best match can win, the threshold stops mattering much."""
+    verts: list[list[float]] = []
+    faces: list[np.ndarray] = []
+
+    def box(x0, x1, z0, z1):
+        start = len(verts)
+        for z in (z0, z1):
+            verts.extend([[x0, 0.0, z], [x1, 0.0, z], [x1, 10.0, z], [x0, 10.0, z]])
+        first = len(faces)
+        for quad in (
+            [0, 3, 2, 1],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [1, 2, 6, 5],
+            [2, 3, 7, 6],
+            [3, 0, 4, 7],
+        ):
+            faces.append(np.array([start + i for i in quad]))
+        return np.arange(first, first + 6)
+
+    base = box(0, 10, 0, 10)
+    top = box(2, 8, 10, 13)
+    mesh = Mesh(vertices=np.array(verts), faces=faces)
+    blocks = [Block(mesh, base), Block(mesh, top)]
+
+    for ratio in (0.3, 0.5, 0.7):
+        assert len(merge_stacked(blocks, overlap_ratio=ratio)) == 1
+
+
+def test_numeric_fields_use_n_not_f(cube_obj, tmp_path):
+    """ "F" is dBASE float; readers map it to single precision and lose digits."""
+    out = tmp_path / "types.shp"
+    mesh2gis.convert(cube_obj, out, up="y", epsg=5254, storey_height=3.0)
+    with shp.Reader(str(out)) as r:
+        types = {f[0]: f[1] for f in r.fields[1:]}
+    for name in ("Z_MIN", "Z_MAX", "HEIGHT", "BASE_AREA", "SURF_AREA", "VOLUME", "FLOOR_AREA"):
+        assert types[name] == "N", f"{name} must be N, got {types[name]}"
+
+
+def test_large_values_survive_a_roundtrip(tmp_path):
+    """Nine significant digits must come back unchanged."""
+    src = tmp_path / "big.obj"
+    src.write_text(
+        "usemtl M\n"
+        "v 0 0 0\nv 123.456 0 0\nv 123.456 0 -123.456\nv 0 0 -123.456\n"
+        "v 0 98.765 0\nv 123.456 98.765 0\nv 123.456 98.765 -123.456\n"
+        "v 0 98.765 -123.456\n"
+        "f 1 4 3 2\nf 5 6 7 8\nf 1 2 6 5\nf 2 3 7 6\nf 3 4 8 7\nf 4 1 5 8\n"
+    )
+    out = tmp_path / "big.shp"
+    mesh2gis.convert(src, out, up="y", epsg=5254)
+    with shp.Reader(str(out)) as r:
+        rec = r.record(0)
+    expected = 123.456 * 123.456 * 98.765
+    assert rec["VOLUME"] == pytest.approx(expected, abs=1e-3)

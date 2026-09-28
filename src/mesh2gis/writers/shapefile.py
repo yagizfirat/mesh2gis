@@ -32,19 +32,19 @@ __all__ = ["write_multipatch"]
 _CORE_FIELDS = [
     ("BLOCK_ID", "N", 10, 0),
     ("LABEL", "C", 64, 0),
-    ("Z_MIN", "F", 19, 4),
-    ("Z_MAX", "F", 19, 4),
-    ("HEIGHT", "F", 19, 4),
-    ("BASE_AREA", "F", 19, 4),
-    ("SURF_AREA", "F", 19, 4),
-    ("VOLUME", "F", 19, 4),
+    ("Z_MIN", "N", 19, 4),
+    ("Z_MAX", "N", 19, 4),
+    ("HEIGHT", "N", 19, 4),
+    ("BASE_AREA", "N", 19, 4),
+    ("SURF_AREA", "N", 19, 4),
+    ("VOLUME", "N", 19, 4),
     ("CLOSED", "L", 1, 0),
     ("N_PARTS", "N", 6, 0),
     ("N_FACES", "N", 10, 0),
 ]
 _STOREY_FIELDS = [
     ("STOREYS", "N", 6, 0),
-    ("FLOOR_AREA", "F", 19, 4),
+    ("FLOOR_AREA", "N", 19, 4),
 ]
 
 
